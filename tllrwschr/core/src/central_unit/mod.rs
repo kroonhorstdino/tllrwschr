@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use tokio::sync::mpsc::{channel, Receiver};
 use tokio::sync::Mutex;
 
@@ -11,12 +11,12 @@ use types::UnitCommunicationHandler;
 use crate::{
     game::output::{GameOutput, OutputTarget},
     periphery::{
-        CommDeviceSocket,
         communicator_id::CommunicatorId,
         device::{Device, DeviceId},
-        FromCommMsg,
-        FromUnitMsg,
-        FromUnitReceiverMap, messages::{FromCommMsgContent, FromUnitMsgContent}, messages::master::{FromCommMasterOrder, FromUnitMasterEvent}, messages::slave::{FromCommSlaveEvent, FromUnitSlaveOrder}, SenderFromComm,
+        messages::master::{FromCommMasterOrder, FromUnitMasterEvent},
+        messages::slave::{FromCommSlaveEvent, FromUnitSlaveOrder},
+        messages::{FromCommMsgContent, FromUnitMsgContent},
+        CommDeviceSocket, FromCommMsg, FromUnitMsg, FromUnitReceiverMap, SenderFromComm,
         SenderFromUnit, ToCommSenderVec,
     },
 };
@@ -78,21 +78,21 @@ impl CentralUnit {
             .unwrap();
         println!("Received first message from device {}", msg.device_id);
 
-        let mut slave_recv = self
-            .master_channels
-            .unit_receiver
-            .as_ref()
-            .unwrap()
-            .lock()
-            .await; //TODO: Return lock?
+        //TODO: let mut slave_recv = self
+        //    .slave_channels
+        //.unit_receiver
+        //    .as_ref()
+        //    .unwrap()
+        //.lock()
+        //    .await; //TODO: Return lock?
 
         //Loop for entirety of program
         loop {
             while let Ok(msg) = &master_recv.try_recv() {
-                self.handle_master_msg(&msg);
+                self.handle_master_msg(msg).unwrap();
             }
 
-            while let Ok(msg) = &slave_recv.try_recv() {}
+            //TODO: while let Ok(msg) = &slave_recv?.try_recv() {}
 
             //If appropriate command or event, forward to game scheduler
 
