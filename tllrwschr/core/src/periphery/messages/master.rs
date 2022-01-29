@@ -1,7 +1,8 @@
+use std::fmt::{write, Display, Formatter};
+
 use crate::game::input::InputContent;
 use crate::game::output::GameOutputContent;
 use crate::periphery::messages::{FromCommMsgContent, FromUnitMsgContent};
-use std::fmt::{write, Display, Formatter};
 
 pub enum FromUnitMasterEvent {
     UnitShutdownEvent {

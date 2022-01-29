@@ -1,25 +1,22 @@
-use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{bail, Result};
 use tokio::sync::mpsc::{channel, Receiver};
 use tokio::sync::Mutex;
-use tokio::time::Timeout;
 
 use types::UnitCommunicationHandler;
 
 use crate::{
     game::output::{GameOutput, OutputTarget},
     periphery::{
+        CommDeviceSocket,
         communicator_id::CommunicatorId,
         device::{Device, DeviceId},
-        messages::master::{FromCommMasterOrder, FromUnitMasterEvent},
-        messages::slave::{FromCommSlaveEvent, FromUnitSlaveOrder},
-        messages::{FromCommMsgContent, FromUnitMsgContent},
-        CommDeviceSocket, FromCommMsg, FromUnitMsg, FromUnitReceiverMap, SenderFromComm,
+        FromCommMsg,
+        FromUnitMsg,
+        FromUnitReceiverMap, messages::{FromCommMsgContent, FromUnitMsgContent}, messages::master::{FromCommMasterOrder, FromUnitMasterEvent}, messages::slave::{FromCommSlaveEvent, FromUnitSlaveOrder}, SenderFromComm,
         SenderFromUnit, ToCommSenderVec,
     },
 };
