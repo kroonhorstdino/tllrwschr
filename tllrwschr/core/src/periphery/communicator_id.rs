@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter, Octal};
+use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 
 #[derive(Eq, PartialEq, Clone, Copy, Hash)]

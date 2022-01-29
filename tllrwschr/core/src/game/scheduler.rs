@@ -3,8 +3,8 @@ use std::borrow::Borrow;
 use anyhow::{anyhow, Result};
 
 use crate::central_unit::types::UnitGameOutputSenderHandle;
-use crate::game::output::{GameOutput, GameOutputContent};
 use crate::game::GamePlan;
+use crate::game::output::{GameOutput, GameOutputContent};
 use crate::periphery::device::DeviceId;
 use crate::periphery::messages::master::{FromCommMasterOrder, FromUnitMasterEvent};
 use crate::periphery::messages::slave::{FromCommSlaveEvent, FromUnitSlaveOrder};

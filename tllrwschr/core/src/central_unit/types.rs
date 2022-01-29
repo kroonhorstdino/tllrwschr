@@ -1,13 +1,15 @@
-use crate::game::output::{GameOutput, OutputTarget};
-use crate::periphery::messages::master::FromUnitMasterEvent;
-use crate::periphery::messages::slave::FromUnitSlaveOrder;
-use crate::periphery::messages::{FromCommMsgContent, FromUnitMsgContent};
-use crate::periphery::{FromCommMsg, FromUnitMsg, FromUnitReceiverMap, ToCommSenderVec};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
+
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::Mutex;
+
+use crate::game::output::{GameOutput, OutputTarget};
+use crate::periphery::{FromCommMsg, FromUnitMsg, FromUnitReceiverMap, ToCommSenderVec};
+use crate::periphery::messages::{FromCommMsgContent, FromUnitMsgContent};
+use crate::periphery::messages::master::FromUnitMasterEvent;
+use crate::periphery::messages::slave::FromUnitSlaveOrder;
 
 pub(crate) struct UnitCommunicationHandler<ToUnit: FromCommMsgContent, ToDevice: FromUnitMsgContent>
 {

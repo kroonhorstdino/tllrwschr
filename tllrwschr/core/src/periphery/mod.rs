@@ -3,10 +3,11 @@ use std::fmt::{Display, Formatter, Octal};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use communicator_id::CommunicatorId;
-use device::DeviceId;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
+
+use communicator_id::CommunicatorId;
+use device::DeviceId;
 
 use crate::periphery::messages::{FromCommMsgContent, FromUnitMsgContent};
 
