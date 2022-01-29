@@ -1,8 +1,9 @@
-use crate::central_unit::StringLocaliserId;
-use crate::game::scheduler::PlayerId;
-use crate::periphery::DeviceId;
 use std::io::Bytes;
 use std::ops::RangeInclusive;
+
+use crate::central_unit::types::StringLocaliserId;
+use crate::game::scheduler::PlayerId;
+use crate::periphery::device::DeviceId;
 
 pub type InputId = u8;
 

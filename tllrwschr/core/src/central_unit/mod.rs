@@ -1,98 +1,59 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{bail, Result};
 use tokio::sync::mpsc::{channel, Receiver};
+use tokio::sync::Mutex;
+use tokio::time::Timeout;
 
-use crate::game::output::{GameOutput, OutputTarget};
-use crate::periphery::messages::{
-    FromMasterDeviceOrder, ToDeviceCommMsg, ToMasterDeviceMsg, ToUnitCommMsg,
+use types::UnitCommunicationHandler;
+
+use crate::{
+    game::output::{GameOutput, OutputTarget},
+    periphery::{
+        communicator_id::CommunicatorId,
+        device::{Device, DeviceId},
+        messages::master::{FromCommMasterOrder, FromUnitMasterEvent},
+        messages::slave::{FromCommSlaveEvent, FromUnitSlaveOrder},
+        messages::{FromCommMsgContent, FromUnitMsgContent},
+        CommDeviceSocket, FromCommMsg, FromUnitMsg, FromUnitReceiverMap, SenderFromComm,
+        SenderFromUnit, ToCommSenderVec,
+    },
 };
-use crate::periphery::slave::messages::{FromSlaveDeviceEvent, ToSlaveDeviceMsg};
-use crate::periphery::{
-    CommunicatorDeviceSocket, CommunicatorId, Device, DeviceId, FromCommsMsg, FromUnitMsg,
-    FromUnitReceiverMap, SenderFromComm, SenderFromUnit, ToCommsSenderVec,
-};
 
-pub(crate) struct UnitCommunicationHandler<ToUnit: ToUnitCommMsg, ToDevice: ToDeviceCommMsg> {
-    ///Stores channels targeting a communicator each
-    pub unit_sender: ToCommsSenderVec<ToDevice>,
-    ///Receiver end of unit senders
-    pub comms_receiver: FromUnitReceiverMap<ToDevice>,
-
-    ///One sender for each communicator sends messages here, if any exist
-    pub unit_receiver: Option<RefCell<Receiver<FromCommsMsg<ToUnit>>>>,
-}
-
-pub(crate) struct UnitGameOutputSenderHandle {
-    master_sender: ToCommsSenderVec<ToMasterDeviceMsg>,
-    slave_sender: ToCommsSenderVec<ToSlaveDeviceMsg>,
-}
-
-impl UnitGameOutputSenderHandle {
-    pub fn send_output(&self, output: &Vec<GameOutput>) -> Result<()> {
-        self.send_output_internal(output)
-    }
-
-    fn send_output_internal(&self, output: &Vec<GameOutput>) -> Result<()> {
-        for o in output {
-            match o.target {
-                OutputTarget::All => {}
-                OutputTarget::Player(_) => {}
-                OutputTarget::PlayerAll => self.slave_sender.iter().for_each(|(_, c)| {
-                    c.send(FromUnitMsg {
-                        msg: ToSlaveDeviceMsg::GameMessage(o.content.to_owned()),
-                    });
-                }),
-                OutputTarget::MasterOnly => self.master_sender.iter().for_each(|(_, c)| {
-                    c.send(FromUnitMsg {
-                        msg: ToMasterDeviceMsg::GameMessage(o.content.to_owned()),
-                    });
-                }),
-            }
-        }
-
-        Ok(())
-    }
-}
-
-pub type StringLocaliserId = u16;
-
-pub struct StringLocaliser<'a> {
-    pub map: HashMap<StringLocaliserId, &'a str>,
-}
+pub mod types;
 
 pub struct CentralUnit {
     //Channels
-    master_channels: UnitCommunicationHandler<FromMasterDeviceOrder, ToMasterDeviceMsg>,
-    slave_channels: UnitCommunicationHandler<FromSlaveDeviceEvent, ToSlaveDeviceMsg>,
+    master_channels: UnitCommunicationHandler<FromCommMasterOrder, FromUnitMasterEvent>,
+    slave_channels: UnitCommunicationHandler<FromCommSlaveEvent, FromUnitSlaveOrder>,
 
-    prime_comm_sender: SenderFromComm<FromMasterDeviceOrder>,
+    prime_comm_sender: SenderFromComm<FromCommMasterOrder>,
 
     registered_devices: HashMap<DeviceId, Device>,
 }
 
 impl CentralUnit {
     pub fn with_prime_comm<'a>(
-        prime_comm_sender: &'a SenderFromComm<FromMasterDeviceOrder>,
-        prime_comm_recv: &'a Arc<Receiver<FromUnitMsg<ToMasterDeviceMsg>>>,
-        prime_unit_sender: &'a SenderFromUnit<ToMasterDeviceMsg>,
-        prime_unit_recv: &'a RefCell<Receiver<FromCommsMsg<FromMasterDeviceOrder>>>,
+        prime_comm_sender: &'a SenderFromComm<FromCommMasterOrder>,
+        prime_comm_recv: &'a Arc<Mutex<Receiver<FromUnitMsg<FromUnitMasterEvent>>>>,
+        prime_unit_sender: &'a SenderFromUnit<FromUnitMasterEvent>,
+        prime_unit_recv: &Arc<Mutex<Receiver<FromCommMsg<FromCommMasterOrder>>>>,
     ) -> Self {
         let comm_id = CommunicatorId::get_prime_comm_id();
+
+        let mut comms_receiver = FromUnitReceiverMap::with_capacity(4 as usize);
+        comms_receiver.insert(comm_id.clone(), prime_comm_recv.clone());
 
         Self {
             prime_comm_sender: prime_comm_sender.clone(),
             master_channels: UnitCommunicationHandler {
                 unit_sender: vec![(comm_id.clone(), prime_unit_sender.clone())],
-                comms_receiver: FromUnitReceiverMap::from([(
-                    comm_id.clone(),
-                    prime_comm_recv.clone(),
-                )]),
-                unit_receiver: Some(prime_unit_recv.clone()),
+                unit_receiver: Some(Arc::clone(prime_unit_recv)),
+                comms_receiver,
             },
 
             slave_channels: UnitCommunicationHandler {
@@ -105,27 +66,61 @@ impl CentralUnit {
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
-        //Register already connected slaves on serial ports
+        //TODO: Some init logic?
 
-        //Some init logic?
+        let mut master_recv = self
+            .master_channels
+            .unit_receiver
+            .as_ref()
+            .unwrap()
+            .lock()
+            .await; //TODO: Return lock?
+        let msg = tokio::time::timeout(Duration::from_secs(60), master_recv.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        println!("Received first message from device {}", msg.device_id);
+
+        let mut slave_recv = self
+            .master_channels
+            .unit_receiver
+            .as_ref()
+            .unwrap()
+            .lock()
+            .await; //TODO: Return lock?
+
+        //Loop for entirety of program
         loop {
-            //Wait for command, event or game event
+            while let Ok(msg) = &master_recv.try_recv() {
+                self.handle_master_msg(&msg);
+            }
 
-            let unit_recv = &mut self.master_channels.unit_receiver..unwrap();
-            let msg = unit_recv.get_mut();
+            while let Ok(msg) = &slave_recv.try_recv() {}
 
             //If appropriate command or event, forward to game scheduler
-            tokio::time::sleep(Duration::from_millis(500)).await;
+
+            //Frequency of 60 Hz to avoid battery loss
+            tokio::time::sleep(Duration::from_millis(166)).await;
         }
     }
 
+    fn handle_master_msg(&self, msg: &FromCommMsg<FromCommMasterOrder>) -> Result<()> {
+        println!("Received master message from device {}", msg.device_id);
+        Ok(())
+    }
+
+    fn handle_slave_msg(&self, msg: &FromCommMsg<FromCommSlaveEvent>) -> Result<()> {
+        println!("Received slave message from device {}", msg.device_id);
+        Ok(())
+    }
+
     ///Create channels, sender and receivers and generate a communicator socket with specified messages
-    fn generate_add_comms_socket<ToUnit: ToUnitCommMsg, ToComm: ToDeviceCommMsg>(
+    fn generate_add_comms_socket<ToUnit: FromCommMsgContent, ToComm: FromUnitMsgContent>(
         &mut self,
         channels: &mut UnitCommunicationHandler<ToUnit, ToComm>,
         prime_comm_sender: &SenderFromComm<ToUnit>,
         comm_id: &CommunicatorId,
-    ) -> Result<CommunicatorDeviceSocket<ToUnit, ToComm>> {
+    ) -> Result<CommDeviceSocket<ToUnit, ToComm>> {
         //Simple instructions:
         //Unit -> Comm NEW
         //Comm -> Unit COPY!
@@ -143,7 +138,7 @@ impl CentralUnit {
         }
         //Create new channel for Unit to Communicator messages
         let (unit_send, comm_recv) = channel::<FromUnitMsg<ToComm>>(32 as usize);
-        let comm_recv = Arc::new(comm_recv);
+        let comm_recv = Arc::new(Mutex::new(comm_recv));
 
         channels
             .unit_sender
@@ -152,9 +147,9 @@ impl CentralUnit {
             .comms_receiver
             .insert(comm_id.clone(), comm_recv.clone());
 
-        Ok(CommunicatorDeviceSocket {
+        Ok(CommDeviceSocket {
             to_unit: prime_comm_sender.clone(),
-            from_unit: comm_recv,
+            from_unit: comm_recv.clone(),
         })
     }
 }

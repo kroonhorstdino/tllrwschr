@@ -1,17 +1,17 @@
-use crate::game::input::{InputContent, InputData, InputId};
-use crate::game::output::{GameOutput, GameOutputContent};
+use crate::game::input::InputContent;
+use crate::game::output::GameOutputContent;
+use crate::periphery::messages::{FromCommMsgContent, FromUnitMsgContent};
+use std::fmt::{write, Display, Formatter};
 
-pub trait ToDeviceCommMsg {}
-pub trait ToUnitCommMsg {}
-
-pub enum ToMasterDeviceMsg {
+pub enum FromUnitMasterEvent {
     UnitShutdownEvent {
         unit_is_restarting: bool,
         reason: ShutdownReason,
     },
     GameMessage(GameOutputContent),
 }
-impl ToDeviceCommMsg for ToMasterDeviceMsg {}
+
+impl FromUnitMsgContent for FromUnitMasterEvent {}
 
 pub enum ShutdownReason {
     //Probably only used when error crash happens
@@ -22,13 +22,14 @@ pub enum ShutdownReason {
     EnergyLow,
 }
 
-pub enum FromMasterDeviceOrder {
+pub enum FromCommMasterOrder {
     Start,
     Input(InputContent),
     SetPerDeviceSettings(MasterDeviceSettings),
     SetUnitSettings(UnitSettings),
 }
-impl<'a> ToUnitCommMsg for FromMasterDeviceOrder {}
+
+impl<'a> FromCommMsgContent for FromCommMasterOrder {}
 
 pub struct MasterDeviceSettings {
     pub send_raw_player_event: bool,

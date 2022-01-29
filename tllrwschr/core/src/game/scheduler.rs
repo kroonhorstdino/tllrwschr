@@ -1,12 +1,13 @@
-use anyhow::{anyhow, Result};
 use std::borrow::Borrow;
 
-use crate::central_unit::UnitGameOutputSenderHandle;
+use anyhow::{anyhow, Result};
+
+use crate::central_unit::types::UnitGameOutputSenderHandle;
 use crate::game::output::{GameOutput, GameOutputContent};
 use crate::game::GamePlan;
-use crate::periphery::messages::{FromMasterDeviceOrder, ToMasterDeviceMsg};
-use crate::periphery::slave::messages::{FromSlaveDeviceEvent, ToSlaveDeviceMsg};
-use crate::periphery::DeviceId;
+use crate::periphery::device::DeviceId;
+use crate::periphery::messages::master::{FromCommMasterOrder, FromUnitMasterEvent};
+use crate::periphery::messages::slave::{FromCommSlaveEvent, FromUnitSlaveOrder};
 
 pub type PlayerId = u8;
 
@@ -22,11 +23,11 @@ pub struct GameScheduler<Plan: GamePlan> {
 
 ///React to inputs with game plan state machine
 impl<Plan: GamePlan> GameScheduler<Plan> {
-    pub fn event_from_slave(&self, signal: &FromSlaveDeviceEvent) {
+    pub fn event_from_slave(&self, signal: &FromCommSlaveEvent) {
         // Trigger state machine game plan
     }
 
-    pub fn order_from_master(&self, signal: &FromMasterDeviceOrder) -> Result<()> {
+    pub fn order_from_master(&self, signal: &FromCommMasterOrder) -> Result<()> {
         if let Ok(outputs) = self
             .game_plan
             .as_ref()

@@ -1,8 +1,9 @@
+use anyhow::Result;
+use async_trait::async_trait;
+
 use crate::game::input::GameInputTypeSettings;
 use crate::game::output::GameOutput;
 use crate::game::scheduler::PlayerId;
-use anyhow::Result;
-use async_trait::async_trait;
 
 pub mod input;
 pub mod output;

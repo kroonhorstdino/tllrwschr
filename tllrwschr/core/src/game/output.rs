@@ -1,6 +1,7 @@
-use crate::central_unit::StringLocaliserId;
-use crate::game::scheduler::PlayerId;
 use std::ops::RangeInclusive;
+
+use crate::central_unit::types::StringLocaliserId;
+use crate::game::scheduler::PlayerId;
 
 pub struct GameOutput {
     pub target: OutputTarget,
