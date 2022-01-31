@@ -2,23 +2,21 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use tokio::sync::mpsc::{channel, Receiver};
 use tokio::sync::Mutex;
 
 use types::UnitCommunicationHandler;
 
-use crate::{
-    game::output::{GameOutput, OutputTarget},
-    periphery::{
-        communicator_id::CommunicatorId,
-        device::{Device, DeviceId},
-        messages::master::{FromCommMasterOrder, FromUnitMasterEvent},
-        messages::slave::{FromCommSlaveEvent, FromUnitSlaveOrder},
-        messages::{FromCommMsgContent, FromUnitMsgContent},
-        CommDeviceSocket, FromCommMsg, FromUnitMsg, FromUnitReceiverMap, SenderFromComm,
-        SenderFromUnit, ToCommSenderVec,
-    },
+use crate::periphery::communicator::CommUnitConnectionSocket;
+use crate::periphery::messages::comm::{FromCommGeneral, FromUnitGeneral};
+use crate::periphery::{
+    communicator::CommunicatorId,
+    device::{Device, DeviceId},
+    messages::master::{FromCommMasterOrder, FromUnitMasterEvent},
+    messages::slave::{FromCommSlaveEvent, FromUnitSlaveOrder},
+    messages::{FromCommMsgContent, FromUnitMsgContent},
+    FromCommMsg, FromUnitMsg, FromUnitReceiverMap, SenderFromComm, SenderFromUnit, ToCommSenderVec,
 };
 
 pub mod types;
@@ -27,6 +25,7 @@ pub struct CentralUnit {
     //Channels
     master_channels: UnitCommunicationHandler<FromCommMasterOrder, FromUnitMasterEvent>,
     slave_channels: UnitCommunicationHandler<FromCommSlaveEvent, FromUnitSlaveOrder>,
+    general_channels: UnitCommunicationHandler<FromCommGeneral, FromUnitGeneral>,
 
     prime_comm_sender: SenderFromComm<FromCommMasterOrder>,
 
@@ -34,49 +33,56 @@ pub struct CentralUnit {
 }
 
 impl CentralUnit {
-    pub fn with_prime_comm<'a>(
-        prime_comm_sender: &'a SenderFromComm<FromCommMasterOrder>,
-        prime_comm_recv: &'a Arc<Mutex<Receiver<FromUnitMsg<FromUnitMasterEvent>>>>,
-        prime_unit_sender: &'a SenderFromUnit<FromUnitMasterEvent>,
-        prime_unit_recv: &Arc<Mutex<Receiver<FromCommMsg<FromCommMasterOrder>>>>,
+    pub fn with_prime_comm(
+        prime_comm_master_sender: &SenderFromComm<FromCommMasterOrder>,
+        prime_unit_master_sender: &SenderFromUnit<FromUnitMasterEvent>,
+        prime_unit_master_recv: Mutex<Receiver<FromCommMsg<FromCommMasterOrder>>>,
+        prime_unit_general_sender: &SenderFromUnit<FromUnitGeneral>,
+        prime_unit_general_recv: Mutex<Receiver<FromCommMsg<FromCommGeneral>>>,
+        //prime_comm_general_recv: Mutex<Receiver<FromUnitMsg<FromUnitGeneral>>>,
     ) -> Self {
         let comm_id = CommunicatorId::get_prime_comm_id();
 
-        let mut comms_receiver = FromUnitReceiverMap::with_capacity(4 as usize);
-        comms_receiver.insert(comm_id.clone(), prime_comm_recv.clone());
-
         Self {
-            prime_comm_sender: prime_comm_sender.clone(),
+            prime_comm_sender: prime_comm_master_sender.clone(),
             master_channels: UnitCommunicationHandler {
-                unit_sender: vec![(comm_id.clone(), prime_unit_sender.clone())],
-                unit_receiver: Some(Arc::clone(prime_unit_recv)),
-                comms_receiver,
+                unit_sender: vec![(comm_id, prime_unit_master_sender.clone())],
+                unit_receiver: Some(prime_unit_master_recv),
+                //comms_receiver: comms_receiver_master,
             },
 
             slave_channels: UnitCommunicationHandler {
-                unit_sender: Vec::with_capacity(8 as usize),
-                comms_receiver: FromUnitReceiverMap::with_capacity(8 as usize),
+                unit_sender: Vec::with_capacity(8_usize),
+                //comms_receiver: FromUnitReceiverMap::with_capacity(8_usize),
                 unit_receiver: None,
             },
             registered_devices: Default::default(),
+            general_channels: UnitCommunicationHandler {
+                unit_sender: vec![(comm_id, prime_unit_general_sender.clone())],
+                //comms_receiver: comms_receiver_general,
+                unit_receiver: Some(prime_unit_general_recv),
+            },
         }
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
         //TODO: Some init logic?
 
-        let mut master_recv = self
-            .master_channels
+        let mut general_recv = self
+            .general_channels
             .unit_receiver
             .as_ref()
             .unwrap()
             .lock()
             .await; //TODO: Return lock?
-        let msg = tokio::time::timeout(Duration::from_secs(60), master_recv.recv())
+        let msg = tokio::time::timeout(Duration::from_secs(60), general_recv.recv())
             .await
             .unwrap()
             .unwrap();
-        println!("Received first message from device {}", msg.device_id);
+        println!(
+            "Received first message from general channel by device {}",
+            msg.device_id
+        );
 
         //TODO: let mut slave_recv = self
         //    .slave_channels
@@ -88,8 +94,8 @@ impl CentralUnit {
 
         //Loop for entirety of program
         loop {
-            while let Ok(msg) = &master_recv.try_recv() {
-                self.handle_master_msg(msg).unwrap();
+            while let Ok(msg) = &general_recv.try_recv() {
+                self.handle_general_msg(msg).unwrap();
             }
 
             //TODO: while let Ok(msg) = &slave_recv?.try_recv() {}
@@ -111,42 +117,39 @@ impl CentralUnit {
         Ok(())
     }
 
+    fn handle_general_msg(&self, msg: &FromCommMsg<FromCommGeneral>) -> Result<()> {
+        println!("Received general message from device {}", msg.device_id);
+        Ok(())
+    }
+
     ///Create channels, sender and receivers and generate a communicator socket with specified messages
     fn generate_add_comms_socket<ToUnit: FromCommMsgContent, ToComm: FromUnitMsgContent>(
         &mut self,
         channels: &mut UnitCommunicationHandler<ToUnit, ToComm>,
         prime_comm_sender: &SenderFromComm<ToUnit>,
         comm_id: &CommunicatorId,
-    ) -> Result<CommDeviceSocket<ToUnit, ToComm>> {
+    ) -> Result<CommUnitConnectionSocket<ToUnit, ToComm>> {
         //Simple instructions:
         //Unit -> Comm NEW
         //Comm -> Unit COPY!
 
         //Find prime communicator and copy its sender to create a new instance for this communicator
-        let comm_send = &self.prime_comm_sender;
+        let _comm_send = &self.prime_comm_sender;
 
-        let (can_insert_send, can_insert_recv) = (
-            !channels.unit_sender.iter().any(|(c, _)| &c == &comm_id),
-            !channels.comms_receiver.iter().any(|(c, _)| &c == &comm_id),
-        );
+        let can_insert_send = !channels.unit_sender.iter().any(|(c, _)| c == comm_id);
 
-        if !(can_insert_send && can_insert_recv) {
+        if !(can_insert_send) {
             bail!("Comm {} already exists!", comm_id)
         }
         //Create new channel for Unit to Communicator messages
-        let (unit_send, comm_recv) = channel::<FromUnitMsg<ToComm>>(32 as usize);
-        let comm_recv = Arc::new(Mutex::new(comm_recv));
+        let (unit_send, comm_recv) = channel::<FromUnitMsg<ToComm>>(32_usize);
+        let comm_recv = Mutex::new(comm_recv);
 
-        channels
-            .unit_sender
-            .push((comm_id.clone(), unit_send.clone()));
-        channels
-            .comms_receiver
-            .insert(comm_id.clone(), comm_recv.clone());
+        channels.unit_sender.push((*comm_id, unit_send));
 
-        Ok(CommDeviceSocket {
+        Ok(CommUnitConnectionSocket {
             to_unit: prime_comm_sender.clone(),
-            from_unit: comm_recv.clone(),
+            from_unit: comm_recv,
         })
     }
 }

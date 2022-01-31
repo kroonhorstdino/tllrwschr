@@ -1,9 +1,7 @@
-use std::io::Bytes;
 use std::ops::RangeInclusive;
 
 use crate::central_unit::types::StringLocaliserId;
 use crate::game::scheduler::PlayerId;
-use crate::periphery::device::DeviceId;
 
 pub type InputId = u8;
 
@@ -12,12 +10,14 @@ pub struct PlayerInput {
     content: InputContent,
 }
 
+#[derive(Debug)]
 pub struct InputContent {
     input_id: InputId,
     data: InputData,
 }
 
 /// Types of player input which are accepted by game plans
+#[derive(Debug)]
 pub enum InputData {
     /// Can be physical button or virtual one, a button with text
     ButtonDigital,

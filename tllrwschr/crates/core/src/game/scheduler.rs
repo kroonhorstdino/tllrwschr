@@ -1,13 +1,11 @@
-use std::borrow::Borrow;
-
 use anyhow::{anyhow, Result};
 
 use crate::central_unit::types::UnitGameOutputSenderHandle;
+use crate::game::output::GameOutputContent;
 use crate::game::GamePlan;
-use crate::game::output::{GameOutput, GameOutputContent};
 use crate::periphery::device::DeviceId;
-use crate::periphery::messages::master::{FromCommMasterOrder, FromUnitMasterEvent};
-use crate::periphery::messages::slave::{FromCommSlaveEvent, FromUnitSlaveOrder};
+use crate::periphery::messages::master::FromCommMasterOrder;
+use crate::periphery::messages::slave::FromCommSlaveEvent;
 
 pub type PlayerId = u8;
 
@@ -23,11 +21,11 @@ pub struct GameScheduler<Plan: GamePlan> {
 
 ///React to inputs with game plan state machine
 impl<Plan: GamePlan> GameScheduler<Plan> {
-    pub fn event_from_slave(&self, signal: &FromCommSlaveEvent) {
+    pub fn event_from_slave(&self, _signal: &FromCommSlaveEvent) {
         // Trigger state machine game plan
     }
 
-    pub fn order_from_master(&self, signal: &FromCommMasterOrder) -> Result<()> {
+    pub fn order_from_master(&self, _signal: &FromCommMasterOrder) -> Result<()> {
         if let Ok(outputs) = self
             .game_plan
             .as_ref()
@@ -37,7 +35,7 @@ impl<Plan: GamePlan> GameScheduler<Plan> {
             ///Responses which are to be processed further instead of just sent ahead
             //self.sender_handle
             // .send_output(outputs.iter().map(|o| ToMasterDeviceMsg::GameMessage()));
-            let mut process_responses = outputs.iter().filter_map(|o| match o.content {
+            let _process_responses = outputs.iter().filter_map(|o| match o.content {
                 GameOutputContent::PlayerAdded { .. } => Some(o),
                 GameOutputContent::PlayerRemoved { .. } => Some(o),
                 GameOutputContent::PhaseEvent(_) => Some(o),

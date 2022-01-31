@@ -6,11 +6,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [workspace]
 members = [
-    "core",
+    "crates/core",
+    "crates/*"
 ]
 
 [dependencies]
-core = { path = "core" }
+core = { path = "crates/core" }
+communicator-tui = { path = "crates/communicator-tui" }
 anyhow = "1"
 async-trait = "0.1"
 tokio = { version = "1", features = ["full"] }

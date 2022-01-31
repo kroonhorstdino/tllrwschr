@@ -1,5 +1,5 @@
-use crate::periphery::communicator_id::CommunicatorId;
-use crate::periphery::ConnectionKind;
+use crate::periphery::communicator::CommunicatorId;
+use crate::periphery::communicator::ConnectionKind;
 
 pub type DeviceId = u8;
 

@@ -1,15 +1,18 @@
 use std::io::Error;
-use std::sync::Arc;
 
 use tokio::sync::mpsc::channel;
 use tokio::sync::Mutex;
 
-use core::periphery::communicator_id::CommunicatorId;
-use core::periphery::messages::master::{FromCommMasterOrder, FromUnitMasterEvent};
+use communicator_tui::TuiCommunicator;
+use core::periphery::messages::comm::{FromCommGeneral, FromUnitGeneral};
+use core::periphery::messages::master::{FromCommMasterOrder, FromUnitMasterEvent, UnitStatus};
 use core::{
     central_unit::CentralUnit,
     periphery::{
-        messages::FromCommMsgContent, messages::FromUnitMsgContent, FromCommMsg, FromUnitMsg,
+        communicator::{
+            CommUnitConnection, CommUnitConnectionSocket, Communicator, CommunicatorId,
+        },
+        FromCommMsg, FromUnitMsg,
     },
 };
 
@@ -17,31 +20,48 @@ use core::{
 async fn main() -> Result<(), Error> {
     println!("Hello, tllrwshr!");
 
-    let (u_s, c_r) = channel::<FromUnitMsg<FromUnitMasterEvent>>(32 as usize);
-    let (c_s, u_r) = channel::<FromCommMsg<FromCommMasterOrder>>(32 as usize);
+    let (unit_master_sender, comm_master_recv) =
+        channel::<FromUnitMsg<FromUnitMasterEvent>>(32_usize);
+    let (comm_master_sender, unit_master_recv) =
+        channel::<FromCommMsg<FromCommMasterOrder>>(32_usize);
+    let (comm_general_sender, unit_general_recv) =
+        channel::<FromCommMsg<FromCommGeneral>>(32_usize);
+    let (unit_general_sender, comm_general_recv) =
+        channel::<FromUnitMsg<FromUnitGeneral>>(32_usize);
     //Create central_unit
 
     let mut central_unit = CentralUnit::with_prime_comm(
-        &c_s,
-        &Arc::new(Mutex::new(c_r)),
-        &u_s,
-        &Arc::new(Mutex::new(u_r)),
+        &comm_master_sender,
+        &unit_master_sender,
+        Mutex::new(unit_master_recv),
+        &unit_general_sender,
+        Mutex::new(unit_general_recv),
     );
-    //Create some communicator
+    //Create some communicator.
     //Get communicator socket from c_u
 
-    //TODO: Create tui communicator that sends Start signal
-    c_s.try_send(FromCommMsg {
-        device_id: 0,
-        msg: FromCommMasterOrder::Start,
-    })
-    .unwrap_or_else(|_| panic!("No msg sent"));
+    comm_master_sender
+        .try_send(FromCommMsg {
+            msg: FromCommMasterOrder::SetUnitStatus(UnitStatus::Active),
+            device_id: 8,
+        })
+        .unwrap_or_else(|_| panic!("Test"));
 
-    c_s.try_send(FromCommMsg {
-        device_id: 0,
-        msg: FromCommMasterOrder::Start,
-    })
-    .unwrap_or_else(|_| panic!("No msg sent"));
+    let tui = TuiCommunicator::with_communicator(
+        CommunicatorId { id: 0 },
+        CommUnitConnection {
+            master: CommUnitConnectionSocket {
+                to_unit: comm_master_sender,
+                from_unit: Mutex::new(comm_master_recv),
+            },
+            slave: None,
+            general: CommUnitConnectionSocket {
+                to_unit: comm_general_sender,
+                from_unit: Mutex::new(comm_general_recv),
+            },
+        },
+    );
+    tui.start();
 
     tokio::spawn(async move {
         central_unit.run().await.unwrap();

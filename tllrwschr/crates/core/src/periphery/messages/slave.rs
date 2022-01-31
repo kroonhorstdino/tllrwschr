@@ -1,8 +1,6 @@
-use crate::game::input::InputContent;
 use crate::game::output::GameOutputContent;
-use crate::game::scheduler::PlayerId;
-use crate::periphery::device::DeviceId;
-use crate::periphery::{FromCommMsgContent, FromUnitMsgContent};
+
+use crate::periphery::{DeviceId, FromCommMsgContent, FromUnitMsgContent};
 
 ///Messages sent from unit to slave communicator
 pub enum FromUnitSlaveOrder {
@@ -14,11 +12,7 @@ impl FromUnitMsgContent for FromUnitSlaveOrder {}
 
 ///Messages sent from slave to unit communicator
 pub enum FromCommSlaveEvent {
-    Disconnected {
-        device_id: DeviceId,
-        content: SlaveDisconnected,
-    },
-    Input(InputContent),
+    DisconnectDevice(DeviceId),
 }
 impl FromCommMsgContent for FromCommSlaveEvent {}
 
@@ -27,8 +21,6 @@ pub enum SlaveDisconnected {
     BatteryLow,
     SerialInterrupted,
 }
-
-pub type LightId = u8;
 
 pub enum SlaveState {
     Off,    //Slave is offline

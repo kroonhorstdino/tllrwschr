@@ -33,7 +33,6 @@ pub enum GameOutputContent {
         player_id: PlayerId,
     },
     PhaseEvent(StringLocaliserId),
-    GeneralEvent(StringLocaliserId),
     CustomStr {
         msg: StringLocaliserId,
     },
